@@ -72,7 +72,7 @@ func DownloadImages(session *session.Session, bucket string, tempDir string, obj
 	return nil
 }
 
-func TimeInDay(t time.Time, from time.Time, to time.Time) bool {
+func TimeInDateRange(t time.Time, from time.Time, to time.Time) bool {
 	if (t.Equal(from) || t.After(from)) && t.Before(to) {
 		return true
 	} else {
@@ -163,7 +163,7 @@ func main() {
 	if dateFilter {
 		n := 0
 		for _, item := range objects {
-			if TimeInDay(*item.LastModified, startDate, endDate) {
+			if TimeInDateRange(*item.LastModified, startDate, endDate) {
 				objects[n] = item
 				n++
 			}
