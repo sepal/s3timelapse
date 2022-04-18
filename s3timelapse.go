@@ -45,13 +45,13 @@ func ListObjects(bucket string, prefix string, session *session.Session) ([]*s3.
 	return resp.Contents, nil
 }
 
-func DownloadImages(session *session.Session, bucket string, objects []*s3.Object) error {
+func DownloadImages(session *session.Session, bucket string, tempDir string, objects []*s3.Object) error {
 
 	for _, item := range objects {
 		key_parts := strings.Split(*item.Key, "/")
 		fn := key_parts[len(key_parts)-1]
 
-		file, err := os.Create(filepath.Join("./images", fn))
+		file, err := os.Create(filepath.Join(tempDir, fn))
 		defer file.Close()
 		if err != nil {
 			return err
@@ -87,6 +87,7 @@ func main() {
 	var forDay string
 	var from string
 	var to string
+	var tempDir string
 
 	flag.StringVar(&url, "url", "", "An s3 url containing the timelapse images, e.g.: s3://mybucket/images/")
 	flag.StringVar(&out, "output", "out.mp4", "The filename of the timelapse video.")
@@ -94,16 +95,23 @@ func main() {
 	flag.StringVar(&forDay, "for", "", "Generate a timelapse for a certain day. The s3 last modified date will be used to pull the relevant images.")
 	flag.StringVar(&from, "from", "", "Generate a timelapse for a certain date range based on the s3 last modified date. Requires an end date as well.")
 	flag.StringVar(&to, "to", "", "Generate a timelapse for a certain date range based on the s3 last modified date. Requires a start date as well.")
+	flag.StringVar(&tempDir, "tempDir", "images", "The temporary directory which will hold the images.")
 
-	info, err := os.Stat("./images")
-
-	if os.IsNotExist(err) {
-		os.Mkdir("./images", 0750)
-	} else if !info.IsDir() {
-		log.Fatal("'images' file found, can't create folder")
-		return
-	}
 	flag.Parse()
+
+	_, err := os.Stat(tempDir)
+
+	if !os.IsNotExist(err) {
+		err = os.RemoveAll(tempDir)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	err = os.MkdirAll(tempDir, 0750)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	bucket, prefix := ParseUrl(url)
 
@@ -169,7 +177,7 @@ func main() {
 		return
 	}
 
-	err = DownloadImages(session, bucket, objects)
+	err = DownloadImages(session, bucket, tempDir, objects)
 
 	if err != nil {
 		log.Fatal(err)
