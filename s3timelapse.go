@@ -72,11 +72,8 @@ func DownloadImages(session *session.Session, bucket string, objects []*s3.Objec
 	return nil
 }
 
-func TimeInDay(t time.Time, day time.Time) bool {
-	durD, _ := time.ParseDuration("24h")
-	end := day.Add(durD)
-
-	if (t.Equal(day) || t.After(day)) && t.Before(end) {
+func TimeInDay(t time.Time, from time.Time, to time.Time) bool {
+	if (t.Equal(from) || t.After(from)) && t.Before(to) {
 		return true
 	} else {
 		return false
@@ -88,10 +85,15 @@ func main() {
 	var out string
 	var speed float64
 	var forDay string
+	var from string
+	var to string
+
 	flag.StringVar(&url, "url", "", "An s3 url containing the timelapse images, e.g.: s3://mybucket/images/")
 	flag.StringVar(&out, "output", "out.mp4", "The filename of the timelapse video.")
 	flag.Float64Var(&speed, "speed", 1.0, "The speed of the timelapse in PTS.")
 	flag.StringVar(&forDay, "for", "", "Generate a timelapse for a certain day. The s3 last modified date will be used to pull the relevant images.")
+	flag.StringVar(&from, "from", "", "Generate a timelapse for a certain date range based on the s3 last modified date. Requires an end date as well.")
+	flag.StringVar(&to, "to", "", "Generate a timelapse for a certain date range based on the s3 last modified date. Requires a start date as well.")
 
 	info, err := os.Stat("./images")
 
@@ -110,17 +112,50 @@ func main() {
 
 	objects, err := ListObjects(bucket, prefix, session)
 
-	if forDay != "" {
-		day, err := time.Parse("2006-01-02", forDay)
+	var startDate, endDate time.Time
+	dateFilter := false
+
+	if from != "" && to == "" {
+		log.Fatalf("No end date provided.")
+		return
+	} else if from == "" && to != "" {
+		log.Fatalf("No start date provided.")
+		return
+	} else if from != "" && to != "" {
+		if forDay != "" {
+			log.Print("Ignoring '--for' param, since start and end date were set.")
+		}
+
+		const layout = "2006-01-02 15:04"
+		startDate, err = time.Parse(layout, from)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+
+		endDate, err = time.Parse(layout, to)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		dateFilter = true
+	} else if forDay != "" {
+		startDate, err = time.Parse("2006-01-02", forDay)
 
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
 
+		durD, _ := time.ParseDuration("24h")
+		endDate = startDate.Add(durD)
+		dateFilter = true
+	}
+
+	if dateFilter {
 		n := 0
 		for _, item := range objects {
-			if TimeInDay(*item.LastModified, day) {
+			if TimeInDay(*item.LastModified, startDate, endDate) {
 				objects[n] = item
 				n++
 			}
